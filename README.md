@@ -4,10 +4,10 @@ Smart Ledbar System is an Android app designed to interface a ledbar via Bluetoo
 
 ## Features
 
-- **Color Selection:** Choose from a wide range of colors to light up your LED bar.
+- **Color Selection:** Choose from a wide range of colors to light up your ledbar.
 - **Lighting Effects:** Apply various effects like flashing, fading, and color cycling.
 - **Moments:** Save and recall custom lighting configurations and sequences.
-- **Bluetooth Control:** Communicates with the LED bar through the HC-06 Bluetooth module.
+- **Bluetooth Control:** Communicates with the ledbar through the HC-06 Bluetooth module.
 - **Real-time Commands:** Sends commands instantly for responsive lighting control.
 
 ## How It Works
@@ -32,7 +32,7 @@ The app connects to the HC-06 Bluetooth module paired with your ledbar controlle
 
 - Android Studio for app development.
 - Bluetooth Classic communication with HC-06.
-- Custom protocol for LED bar control commands.
+- Custom protocol for ledbar control commands.
 
 ## License
 
