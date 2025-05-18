@@ -1,6 +1,6 @@
 # Smart Ledbar System
 
-Smart Ledbar System is an Android app designed to interface with an LED bar via Bluetooth (using the HC-06 module). It allows users to control the ledbar by selecting colors, applying dynamic lighting effects, and creating custom lighting moments.
+Smart Ledbar System is an Android app designed to interface an LED bar via Bluetooth (using the HC-06 module). It allows users to control the ledbar by selecting colors, applying dynamic lighting effects, and creating custom lighting moments.
 
 ## Features
 
