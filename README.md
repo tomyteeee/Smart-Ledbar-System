@@ -26,7 +26,7 @@ The app connects to the HC-06 Bluetooth module paired with your ledbar controlle
 2. Open the Smart Ledbar System app.
 3. Connect to the ledbar within the app.
 4. Select colors, effects, or predefined moments.
-5. Commands are sent automatically to update the LED bar.
+5. Commands are sent automatically to update the ledbar.
 
 ## Technology
 
