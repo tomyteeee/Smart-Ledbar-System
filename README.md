@@ -18,7 +18,7 @@ The app connects to the HC-06 Bluetooth module paired with your ledbar controlle
 
 - Android device with Bluetooth support.
 - HC-06 Bluetooth module connected to the ledbar controller.
-- LED bar compatible with the control protocol.
+- Ledbar compatible with the control protocol.
 
 ## Usage
 
