@@ -10,6 +10,7 @@ import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Text
 import androidx.compose.runtime.*
+import androidx.compose.runtime.snapshots.SnapshotStateMap
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
@@ -28,47 +29,46 @@ fun LedbarPreview(
     selectedGroupIndices: Set<Int>,
     onGroupSelected: (Set<Int>) -> Unit,
     rgbColorStr: String,
-    displayMomentsAndEffects: Boolean,
+    displayMoments: Boolean,
+    displayEffects: Boolean,
+    onToggleMoments: () -> Unit,
+    onToggleEffects: () -> Unit,
+    loopKey: Int,
+    selectedMoment: Int?,
+    visibilityMap: SnapshotStateMap<Int, Boolean>,
 ) {
-    val visibilityMap = remember { mutableStateMapOf<Int, Boolean>() }
     var fadeAlpha by remember { mutableStateOf(1f) }
     var currentColor by remember { mutableStateOf(rgbColorStr) }
-    var triggerAnimation by remember { mutableStateOf(false) }
+    var currentlySelectedMoment by remember { mutableStateOf(selectedMoment) }
 
     LaunchedEffect(rgbColorStr) {
         currentColor = rgbColorStr
     }
 
+    LaunchedEffect(selectedMoment) {
+        currentlySelectedMoment = selectedMoment
+    }
+
     LaunchedEffect(selectedGroupIndices) {
         if (selectedGroupIndices.isNotEmpty()) {
             while (true) {
-                delay(200) // Delay before fading out
-                fadeAlpha = 0.3f // Fade out
-                delay(200) // Delay before fading in
-                fadeAlpha = 1f // Fade in
+                delay(200)
+                fadeAlpha = 0.3f
+                delay(200)
+                fadeAlpha = 1f
             }
         }
     }
 
-    Log.d("PROJEKTAS", "Effects: $groupEffects")
-
-    LaunchedEffect(groupEffects) {
-        visibilityMap.clear()
-        for (i in 0 until 8) visibilityMap[i] = true
-
-        if (displayMomentsAndEffects) {
-            groupEffects.forEach { (idx, effect) ->
-                if (effect is Effect.Blink) {
-                    launch {
-                        repeat(effect.times) {
-                            visibilityMap[idx] = false
-                            delay(effect.delay.toLong())
-                            visibilityMap[idx] = true
-                            delay(effect.delay.toLong())
-                        }
-                    }
-                }
-            }
+    val colorsToUse = remember(displayMoments, selectedMoment, groupColors) {
+        if (!displayMoments && selectedMoment != null) {
+            configuration.moments
+                .getOrNull(selectedMoment)
+                ?.colorConfig
+                ?.associate { it.index to it.rgb }
+                ?: groupColors
+        } else {
+            groupColors
         }
     }
 
@@ -77,26 +77,36 @@ fun LedbarPreview(
         horizontalArrangement = Arrangement.End,
         verticalAlignment = Alignment.CenterVertically
     ) {
+
         OutlinedButton(
-            onClick = { /* hide colors */ },
+            onClick = {
+                onToggleEffects()
+            },
             border = BorderStroke(2.dp, Color(7, 53, 139)),
-            colors = ButtonDefaults.buttonColors(containerColor = Color(11, 77, 199)),
             contentPadding = PaddingValues(start = 20.dp, end = 20.dp),
             shape = RoundedCornerShape(8.dp),
+            colors = ButtonDefaults.buttonColors(containerColor = Color(11, 77, 199)),
             modifier = Modifier.height(28.dp)
         ) {
-            Text("Slėpti spalvas", fontSize = 12.sp, color = Color.White)
+            Text(if (displayEffects) "Slėpti efektus" else "Rodyti efektus", fontSize = 12.sp, color = Color.White)
         }
         Spacer(modifier = Modifier.width(6.dp))
         OutlinedButton(
-            onClick = { /* hide effects */ },
+            onClick = {
+                onToggleMoments()
+                if (!displayMoments) {
+                    Log.d("PROJEKTAS", "reverting colors")
+
+
+                }
+            },
             border = BorderStroke(2.dp, Color(7, 53, 139)),
+            colors = ButtonDefaults.buttonColors(containerColor = Color(11, 77, 199)),
             contentPadding = PaddingValues(start = 20.dp, end = 20.dp),
             shape = RoundedCornerShape(8.dp),
-            colors = ButtonDefaults.buttonColors(containerColor = Color(11, 77, 199)),
             modifier = Modifier.height(28.dp)
         ) {
-            Text("Slėpti momentus", fontSize = 12.sp, color = Color.White)
+            Text(if (displayMoments) "Slėpti momentus" else "Rodyti momentus", fontSize = 12.sp, color = Color.White)
         }
     }
 
@@ -113,20 +123,15 @@ fun LedbarPreview(
             verticalAlignment = Alignment.CenterVertically
         ) {
             (0 until 8).forEach { index ->
-                Log.d("PROJEKTAS", groupColors[index].toString())
-                val baseColor = colorFromRgbString(groupColors[index] ?: "255,255,255")
+                val baseColor = colorFromRgbString(colorsToUse[index] ?: "255,255,255")
                 val visible = visibilityMap[index] ?: true
                 LedGroup(
-                    color = if (!displayMomentsAndEffects || visible) baseColor else baseColor.copy(alpha = 0.2f),
+                    color = if (!displayEffects || visible) baseColor else baseColor.copy(alpha = 0.2f),
                     groupIndex = index,
                     isSelected = selectedGroupIndices.contains(index),
                     onClick = { groupIndex ->
-                        val updatedSelection = if (selectedGroupIndices.contains(groupIndex)) {
-                            selectedGroupIndices - groupIndex
-                        } else {
-                            selectedGroupIndices + groupIndex
-                        }
-                        onGroupSelected(updatedSelection)
+                        val updated = if (selectedGroupIndices.contains(groupIndex)) selectedGroupIndices - groupIndex else selectedGroupIndices + groupIndex
+                        onGroupSelected(updated)
                     },
                     fadeAlpha = fadeAlpha
                 )
@@ -147,7 +152,7 @@ fun LedbarPreview(
             colors = ButtonDefaults.buttonColors(containerColor = Color(11, 77, 199)),
             modifier = Modifier.height(28.dp)
         ) {
-            Text("Anuliuoti visus", fontSize = 12.sp, color = Color.White)
+            Text("Atmesti visus", fontSize = 12.sp, color = Color.White)
         }
         Spacer(modifier = Modifier.width(6.dp))
         OutlinedButton(

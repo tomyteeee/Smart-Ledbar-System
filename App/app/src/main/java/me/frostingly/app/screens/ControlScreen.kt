@@ -13,6 +13,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
+import androidx.compose.runtime.snapshots.SnapshotStateMap
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
@@ -23,6 +24,7 @@ import androidx.compose.ui.unit.sp
 import androidx.compose.ui.window.Popup
 import androidx.navigation.NavController
 import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.delay
 import me.frostingly.app.R
 import me.frostingly.app.Screen
 import me.frostingly.app.SharedPreferences
@@ -60,20 +62,29 @@ fun ControlScreen(
     configuration: String,
     connectionStatus: ConnectionStatus
 ) {
+    val visibilityMap: SnapshotStateMap<Int, Boolean> = remember {
+        mutableStateMapOf<Int, Boolean>().apply {
+            for (i in 0 until 8) this[i] = true
+        }
+    }
+    var displayMoments by remember { mutableStateOf(true) }
+    var displayEffects by remember { mutableStateOf(true) }
+    var loopCount by remember { mutableStateOf(0) }
     var text by remember { mutableStateOf("") }
     var connectionStatus by remember { mutableStateOf(connectionStatus) }
     val bluetoothManager = BluetoothManagerSingleton.getInstance(context)
     var rgbColorStr by remember { mutableStateOf("255 255 255") }
+    var selectedMomentIndex by remember { mutableStateOf(0) }
 
     var showMenu by remember { mutableStateOf(false) }
     var selectedGroupIndices by remember { mutableStateOf<Set<Int>>(emptySet()) }
 
-    val ledbarConfiguration = remember(configuration) {
-        Json.decodeFromString<Configuration>(configuration)
+    val configurationState = remember {
+        mutableStateOf(Json.decodeFromString<Configuration>(configuration))
     }
 
     // Extract moments from the Configuration object
-    val moments = ledbarConfiguration.moments
+    val moments = configurationState.value.moments
 
     // Flatten all color configs to get initial colors per group index
     val initialGroupColors = moments
@@ -97,23 +108,48 @@ fun ControlScreen(
         }
     }
 
-            var groupColors by remember { mutableStateOf(initialGroupColors) }
-    var groupEffects by remember { mutableStateOf(initialGroupEffects) }
+    var groupColors by remember { mutableStateOf<Map<Int,String>>(emptyMap()) }
+    var groupEffects by remember { mutableStateOf<Map<Int,Effect>>(emptyMap()) }
 
-    // Debug logging
-    moments.forEach { moment ->
-        Log.d(
-            "PROJEKTAS",
-            "Moment ${moment.id} delay=${moment.delayMs} repeat=${moment.repeat}\nColors: ${moment.colorConfig}\nEffects: ${moment.effects}"
-        )
-    }
-    groupEffects.forEach { (index, effect) ->
-        when (effect) {
-            is Effect.Blink -> Log.d("PROJEKTAS", "Group $index Blink delay=${effect.delay} times=${effect.times}")
-            is Effect.Wave -> Log.d("PROJEKTAS", "Group $index Wave delay=${effect.delay} speed=${effect.speed} times=${effect.times}")
-            Effect.NONE -> Log.d("PROJEKTAS", "Group $index No effect")
+    LaunchedEffect(moments, displayMoments) {
+        if (moments.isEmpty() || !displayMoments) return@LaunchedEffect
+
+        while (true) {
+            for (moment in moments) {
+                repeat(moment.repeat) {
+                    groupColors = moment.colorConfig.associate { it.index to it.rgb }
+
+                    val blinkEffects = moment.effects.filterIsInstance<Effect.Blink>()
+
+                    (0 until 8).forEach { visibilityMap[it] = true }
+
+                    val blinkCount = blinkEffects.maxOfOrNull { it.times } ?: 0
+                    val blinkDelay = blinkEffects.firstOrNull()?.delay?.toLong() ?: 0L
+
+                    if (blinkEffects.isNotEmpty()) {
+                        for (i in 1..blinkCount) {
+                            blinkEffects.forEach { effect ->
+                                effect.affectedGroups.forEach { idx -> visibilityMap[idx] = false }
+                            }
+                            delay(blinkDelay)
+                            blinkEffects.forEach { effect ->
+                                effect.affectedGroups.forEach { idx -> visibilityMap[idx] = true }
+                            }
+                            delay(blinkDelay)
+                        }
+                    }
+
+                    val totalBlinkTime = blinkCount * blinkDelay * 2
+                    val remainingDelay = moment.delayMs - totalBlinkTime
+                    if (remainingDelay > 0) delay(remainingDelay)
+                }
+            }
         }
     }
+
+
+
+
 
     if (!bluetoothManager.isBluetoothEnabled()) {
         Log.e("PROJEKTAS", "Bluetooth is not enabled. Please enable Bluetooth.")
@@ -168,7 +204,7 @@ fun ControlScreen(
         ) {
 
             LedbarPreview(
-                configuration = ledbarConfiguration,
+                configuration = configurationState.value,
                 groupColors = groupColors,
                 groupEffects = groupEffects,
                 selectedGroupIndices = selectedGroupIndices,
@@ -176,7 +212,13 @@ fun ControlScreen(
                     selectedGroupIndices = newSelection
                 },
                 rgbColorStr = rgbColorStr,
-                displayMomentsAndEffects = true
+                displayMoments = displayMoments,
+                displayEffects = displayEffects,
+                onToggleMoments = { displayMoments = !displayMoments },
+                onToggleEffects = { displayEffects = !displayEffects },
+                loopCount,
+                selectedMomentIndex,
+                visibilityMap
             )
 
             Column(
@@ -187,7 +229,9 @@ fun ControlScreen(
             ) {
                 Text(text = "Momentai", fontSize = 24.sp, fontWeight = FontWeight.Bold)
 
-                Momentai(ledbarConfiguration)
+                Momentai(configurationState,
+                    selectedIndex = selectedMomentIndex,
+                    onSelectedIndex = { selectedMomentIndex = it })
             }
 
             Row(
@@ -223,7 +267,6 @@ fun ControlScreen(
             ) {
                 Button(
                     onClick = {
-                        // TODO: Save updated configuration with groupColors and groupEffects back to DB or state
                         lifecycleScope.launch {
                             // Example save logic (you'll want to convert groupColors and groupEffects to Moments etc)
                             // configurationRepository.update(/* ... */)
@@ -266,13 +309,19 @@ fun ControlScreen(
                         Column(horizontalAlignment = Alignment.CenterHorizontally) {
 
                             LedbarPreview(
-                                configuration = ledbarConfiguration,
+                                configuration = configurationState.value,
                                 groupColors = groupColors,
                                 groupEffects = groupEffects,
                                 selectedGroupIndices = selectedGroupIndices,
                                 onGroupSelected = { newSelection -> selectedGroupIndices = newSelection },
                                 rgbColorStr = rgbColorStr,
-                                displayMomentsAndEffects = false
+                                displayMoments = displayMoments,
+                                displayEffects = displayEffects,
+                                onToggleMoments = { displayMoments = !displayMoments },
+                                onToggleEffects = { displayEffects = !displayEffects },
+                                loopCount,
+                                selectedMomentIndex,
+                                visibilityMap
                             )
 
                             RGBColorPicker(

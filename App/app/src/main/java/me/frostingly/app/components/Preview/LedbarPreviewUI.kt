@@ -10,13 +10,10 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.unit.dp
-import me.frostingly.app.components.data.Effect
-import me.frostingly.app.components.data.Moment
 import me.frostingly.app.room.ConfigurationDB.Configuration
 
 @Composable
@@ -40,7 +37,6 @@ fun LedbarPreviewUI(
             verticalAlignment = Alignment.CenterVertically
         ) {
             configuration.moments[0].colorConfig.forEach { colorConfig ->
-                Log.d("PROJEKTAS", "RGB: ${colorConfig.rgb} Color: ${colorFromRgbString(colorConfig.rgb)}")
                 LedGroupUI(colorFromRgbString(colorConfig.rgb))
             }
         }
@@ -51,8 +47,6 @@ fun LedbarPreviewUI(
 fun colorFromRgbString(rgbString: String): Color {
     // Split the string into components (no quotes, just numbers separated by commas)
     val rgbComponents = rgbString.split(",").map { it.trim() }
-    Log.d("PROJEKTAS", rgbComponents.toString())
-    Log.d("PROJEKTAS", rgbString)
 
     if (rgbComponents.size != 3) {
         throw IllegalArgumentException("Invalid RGB string. Must contain exactly 3 comma-separated values: '$rgbString'")
