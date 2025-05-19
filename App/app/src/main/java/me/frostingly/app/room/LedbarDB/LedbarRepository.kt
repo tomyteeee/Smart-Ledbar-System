@@ -15,10 +15,26 @@ class LedbarRepository(context: Context) {
         }
     }
 
-    private val db = Room.databaseBuilder(
+
+    val MIGRATION_2_3 = object : Migration(2, 3) {
+        override fun migrate(db: SupportSQLiteDatabase) {
+            // Replace the old default "-" with a valid JSON for your default Configuration.
+            // Here we assume your default Configuration() serializes to "{}"
+            db.execSQL(
+                """
+            UPDATE ledbars 
+               SET configuration = '{}' 
+             WHERE configuration = '-'
+            """.trimIndent()
+            )
+            // (If your default config JSON is more complex, paste it in place of '{}')
+        }
+    }
+
+        private val db = Room.databaseBuilder(
         context.applicationContext,
         AppDatabase::class.java, "ledbars-db"
-    ).addMigrations(MIGRATION_1_2)
+    ).addMigrations(MIGRATION_1_2, MIGRATION_2_3)
         .build()
 
     private val ledbarDao = db.ledbarDao()

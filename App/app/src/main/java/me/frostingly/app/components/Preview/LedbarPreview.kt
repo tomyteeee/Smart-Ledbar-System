@@ -1,5 +1,6 @@
 package me.frostingly.app.components.Preview
 
+import android.util.Log
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
@@ -17,10 +18,11 @@ import androidx.compose.ui.unit.sp
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import me.frostingly.app.components.data.Effect
+import me.frostingly.app.room.ConfigurationDB.Configuration
 
 @Composable
 fun LedbarPreview(
-    configuration: String,
+    configuration: Configuration,
     groupColors: Map<Int, String>,
     groupEffects: Map<Int, Effect>,
     selectedGroupIndices: Set<Int>,
@@ -47,6 +49,8 @@ fun LedbarPreview(
             }
         }
     }
+
+    Log.d("PROJEKTAS", "Effects: $groupEffects")
 
     LaunchedEffect(groupEffects) {
         visibilityMap.clear()
@@ -109,7 +113,8 @@ fun LedbarPreview(
             verticalAlignment = Alignment.CenterVertically
         ) {
             (0 until 8).forEach { index ->
-                val baseColor = colorFromRgbString(groupColors[index] ?: "255 255 255")
+                Log.d("PROJEKTAS", groupColors[index].toString())
+                val baseColor = colorFromRgbString(groupColors[index] ?: "255,255,255")
                 val visible = visibilityMap[index] ?: true
                 LedGroup(
                     color = if (!displayMomentsAndEffects || visible) baseColor else baseColor.copy(alpha = 0.2f),
@@ -156,13 +161,4 @@ fun LedbarPreview(
             Text("Pasirinkti visus", fontSize = 12.sp, color = Color.White)
         }
     }
-}
-
-fun colorFromRgbString(rgbString: String): Color {
-    val rgbComponents = rgbString.split(" ")
-    if (rgbComponents.size != 3) throw IllegalArgumentException("Invalid RGB string. Must contain 3 values.")
-    val r = rgbComponents[0].toInt()
-    val g = rgbComponents[1].toInt()
-    val b = rgbComponents[2].toInt()
-    return Color(r / 255f, g / 255f, b / 255f)
 }

@@ -7,31 +7,12 @@ import android.util.Log
 import androidx.activity.compose.BackHandler
 import androidx.annotation.RequiresApi
 import androidx.compose.foundation.background
-import androidx.compose.foundation.layout.Arrangement
-import androidx.compose.foundation.layout.Box
-import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.Spacer
-import androidx.compose.foundation.layout.fillMaxHeight
-import androidx.compose.foundation.layout.fillMaxSize
-import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.height
-import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.layout.wrapContentSize
+import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
-import androidx.compose.material3.Button
-import androidx.compose.material3.ButtonDefaults
-import androidx.compose.material3.Icon
-import androidx.compose.material3.IconButton
-import androidx.compose.material3.Text
-import androidx.compose.runtime.Composable
-import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.remember
-import androidx.compose.runtime.setValue
+import androidx.compose.material3.*
+import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
@@ -48,46 +29,36 @@ import me.frostingly.app.SharedPreferences
 import me.frostingly.app.bluetooth.BluetoothManagerSingleton
 import me.frostingly.app.bluetooth.ConnectionStatus
 import me.frostingly.app.components.Checkboxes.BlinkEffect
-import me.frostingly.app.components.data.Effect
-import me.frostingly.app.components.Preview.LedbarPreview
-import me.frostingly.app.components.Momentai
 import me.frostingly.app.components.Checkboxes.MoveEffect
 import me.frostingly.app.components.Checkboxes.PulseEffect
-import me.frostingly.app.components.RGBColorPicker
 import me.frostingly.app.components.Checkboxes.WaveEffect
-import me.frostingly.app.components.Preview.colorToRgbString
-import me.frostingly.app.components.Preview.parseColors
-import me.frostingly.app.components.Preview.parseEffects
-import me.frostingly.app.components.Preview.parseMoments
+import me.frostingly.app.components.Preview.LedbarPreview
+import me.frostingly.app.components.Momentai
+import me.frostingly.app.components.RGBColorPicker
+import me.frostingly.app.components.data.Effect
+import me.frostingly.app.room.ConfigurationDB.Configuration
 import me.frostingly.app.room.ConfigurationDB.ConfigurationRepository
 import me.frostingly.app.room.LedbarDB.LedbarRepository
+import kotlinx.coroutines.launch
+import kotlinx.serialization.json.Json
 import sendBluetoothCommand
-
-//00:00:13:00:09:3D
-
-/*
-* - spalvų savaitė (kiekvina diena skirtinga spalva)
-- Per šventes pagal tinkamiausią spalvą
-- galaktika
-- prieš skambutį pradeda mirksėti šviesa
-- pertrauka - žalia, 2 min iki skambučio geltona, nuskambėjus skambučiui į pamoką raudona
-- per petraukas bėgančios spalvos (2 arba3)
-* */
-
-
 
 @RequiresApi(Build.VERSION_CODES.VANILLA_ICE_CREAM)
 @SuppressLint("MissingPermission")
 @Composable
-fun ControlScreen(navController: NavController, access_code: String, sharedPreferences: SharedPreferences,
-                  context: Context, ledbarRepository: LedbarRepository,
-                  configurationRepository: ConfigurationRepository,
-                  lifecycleScope: CoroutineScope,
-                  ledbarId: String,
-                  ledbarMacAddress: String,
-                  ledbarName: String,
-                  ledbarConfiguration: String,
-                  connectionStatus: ConnectionStatus
+fun ControlScreen(
+    navController: NavController,
+    access_code: String,
+    sharedPreferences: SharedPreferences,
+    context: Context,
+    ledbarRepository: LedbarRepository,
+    configurationRepository: ConfigurationRepository,
+    lifecycleScope: CoroutineScope,
+    ledbarId: String,
+    ledbarMacAddress: String,
+    ledbarName: String,
+    configuration: String,
+    connectionStatus: ConnectionStatus
 ) {
     var text by remember { mutableStateOf("") }
     var connectionStatus by remember { mutableStateOf(connectionStatus) }
@@ -97,69 +68,52 @@ fun ControlScreen(navController: NavController, access_code: String, sharedPrefe
     var showMenu by remember { mutableStateOf(false) }
     var selectedGroupIndices by remember { mutableStateOf<Set<Int>>(emptySet()) }
 
-    val momentSection = ledbarConfiguration
-        .substringAfter("moments(")
-        .substringBeforeLast(")")
-        .trim()
-
-    val configWithoutMoments = ledbarConfiguration
-        .replace(Regex("""moments\((.*?)\)""", RegexOption.DOT_MATCHES_ALL), "")
-        .trim()
-        .trim(';', ':')  // clean trailing/leading semicolons or colons
-
-    val colorSection = configWithoutMoments
-        .substringBefore("effects=", "")
-        .removePrefix(":")
-        .trim(';', ':') // clean again if any lingering separators
-
-    val effectSection = configWithoutMoments
-        .substringAfter("effects=", "")
-        .removePrefix(":")
-        .trim(';', ':')
-        .let { if (it.isNotEmpty()) "effects=$it" else "" }
-
-
-    val initialLedColors = parseColors(colorSection, 8)
-    val initialLedEffects = parseEffects(effectSection, 8)
-    Log.d("PROJEKTAS", "Input to parseMoments: [$momentSection]")
-    val initialMoments = parseMoments(momentSection)
-    initialMoments.forEachIndexed { index, moment ->
-        Log.d("PROJEKTAS", "Moment ${moment.id} params: ${moment.delayMs}, ${moment.repeat}\nColors config: ${moment.colorConfig}\nEffect config: ${moment.effectConfig}\n")
+    val ledbarConfiguration = remember(configuration) {
+        Json.decodeFromString<Configuration>(configuration)
     }
-    initialLedEffects.forEachIndexed { index, effect ->
+
+    // Extract moments from the Configuration object
+    val moments = ledbarConfiguration.moments
+
+    // Flatten all color configs to get initial colors per group index
+    val initialGroupColors = moments
+        .flatMap { it.colorConfig }
+        .distinctBy { it.index }
+        .associate { it.index to it.rgb }
+        .toMutableMap()
+
+    // Flatten effects, indexed by LED group index (customize if needed)
+    val initialGroupEffects = mutableMapOf<Int, Effect>()
+
+    moments.flatMap { it.effects }.forEach { effect ->
         when (effect) {
-            is Effect.Blink -> {
-                val delay = effect.delay
-                val times = effect.times
-                Log.d("PROJEKTAS", "LED Group $index has a blink effect: delay = $delay ms, times = $times")
+            is Effect.Blink -> effect.affectedGroups.forEach { groupIndex ->
+                initialGroupEffects[groupIndex] = effect
             }
-
-            is Effect.Wave -> {
-                val delay = effect.delay
-                val speed = effect.speed
-                val times = effect.times
-                Log.d("PROJEKTAS", "LED Group $index has a wave effect: delay = $delay ms, speed = $speed ms, times = $times")
+            is Effect.Wave -> effect.affectedGroups.forEach { groupIndex ->
+                initialGroupEffects[groupIndex] = effect
             }
-
-            Effect.NONE -> {
-                Log.d("PROJEKTAS", "LED Group $index has no effect applied")
-            }
+            Effect.NONE -> {}
         }
     }
-    val initialGroupColors = initialLedColors.mapIndexed { index, color ->
-        index to colorToRgbString(color)
-    }.toMap().toMutableMap()
 
-    val initialGroupEffects = initialLedEffects.mapIndexed { index, effect ->
-        index to effect
-    }.toMap().toMutableMap()
-
-    Log.d("PROJEKTAS", ledbarConfiguration)
-    Log.d("PROJEKTAS", effectSection)
-    Log.d("PROJEKTAS", colorSection)
-
-    var groupColors by remember { mutableStateOf(initialGroupColors) }
+            var groupColors by remember { mutableStateOf(initialGroupColors) }
     var groupEffects by remember { mutableStateOf(initialGroupEffects) }
+
+    // Debug logging
+    moments.forEach { moment ->
+        Log.d(
+            "PROJEKTAS",
+            "Moment ${moment.id} delay=${moment.delayMs} repeat=${moment.repeat}\nColors: ${moment.colorConfig}\nEffects: ${moment.effects}"
+        )
+    }
+    groupEffects.forEach { (index, effect) ->
+        when (effect) {
+            is Effect.Blink -> Log.d("PROJEKTAS", "Group $index Blink delay=${effect.delay} times=${effect.times}")
+            is Effect.Wave -> Log.d("PROJEKTAS", "Group $index Wave delay=${effect.delay} speed=${effect.speed} times=${effect.times}")
+            Effect.NONE -> Log.d("PROJEKTAS", "Group $index No effect")
+        }
+    }
 
     if (!bluetoothManager.isBluetoothEnabled()) {
         Log.e("PROJEKTAS", "Bluetooth is not enabled. Please enable Bluetooth.")
@@ -222,7 +176,7 @@ fun ControlScreen(navController: NavController, access_code: String, sharedPrefe
                     selectedGroupIndices = newSelection
                 },
                 rgbColorStr = rgbColorStr,
-                true
+                displayMomentsAndEffects = true
             )
 
             Column(
@@ -233,7 +187,7 @@ fun ControlScreen(navController: NavController, access_code: String, sharedPrefe
             ) {
                 Text(text = "Momentai", fontSize = 24.sp, fontWeight = FontWeight.Bold)
 
-                Momentai()
+                Momentai(ledbarConfiguration)
             }
 
             Row(
@@ -245,8 +199,12 @@ fun ControlScreen(navController: NavController, access_code: String, sharedPrefe
             ) {
                 Text("Spalva: ")
                 IconButton(onClick = { showMenu = true }) {
-                    Icon(painter = painterResource(R.drawable.rgb), modifier = Modifier
-                        .size(24.dp), contentDescription = "RGB", tint = Color.Unspecified)
+                    Icon(
+                        painter = painterResource(R.drawable.rgb),
+                        modifier = Modifier.size(24.dp),
+                        contentDescription = "RGB",
+                        tint = Color.Unspecified
+                    )
                 }
             }
 
@@ -263,13 +221,15 @@ fun ControlScreen(navController: NavController, access_code: String, sharedPrefe
                 horizontalArrangement = Arrangement.Center,
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                Button(onClick = {
-                    //save new configuration to the configurations databse and ledbar's data
-
-                },
-                    colors = ButtonDefaults.buttonColors(
-                        containerColor = Color(11, 77, 199)
-                    ),
+                Button(
+                    onClick = {
+                        // TODO: Save updated configuration with groupColors and groupEffects back to DB or state
+                        lifecycleScope.launch {
+                            // Example save logic (you'll want to convert groupColors and groupEffects to Moments etc)
+                            // configurationRepository.update(/* ... */)
+                        }
+                    },
+                    colors = ButtonDefaults.buttonColors(containerColor = Color(11, 77, 199)),
                 ) {
                     Text("IŠSAUGOTI")
                 }
@@ -277,14 +237,6 @@ fun ControlScreen(navController: NavController, access_code: String, sharedPrefe
 
             Spacer(modifier = Modifier.size(300.dp))
         }
-
-//        Button(onClick = {
-//            if (selectedGroupIndices.isNotEmpty()) {
-//                sendBluetoothCommand(context, "ge([${reorganizeIndices(selectedGroupIndices)}], \"M(5, 250)\")\n") {}
-//            }
-//        }) {
-//            Text("Move")
-//        }
     }
 
     if (showMenu) {
@@ -311,20 +263,16 @@ fun ControlScreen(navController: NavController, access_code: String, sharedPrefe
                             .background(Color.White, shape = RoundedCornerShape(12.dp))
                             .padding(top = 20.dp, bottom = 20.dp)
                     ) {
-                        Column(
-                            horizontalAlignment = Alignment.CenterHorizontally
-                        ) {
+                        Column(horizontalAlignment = Alignment.CenterHorizontally) {
 
                             LedbarPreview(
                                 configuration = ledbarConfiguration,
                                 groupColors = groupColors,
                                 groupEffects = groupEffects,
                                 selectedGroupIndices = selectedGroupIndices,
-                                onGroupSelected = { newSelection ->
-                                    selectedGroupIndices = newSelection
-                                },
+                                onGroupSelected = { newSelection -> selectedGroupIndices = newSelection },
                                 rgbColorStr = rgbColorStr,
-                                false
+                                displayMomentsAndEffects = false
                             )
 
                             RGBColorPicker(
@@ -333,19 +281,16 @@ fun ControlScreen(navController: NavController, access_code: String, sharedPrefe
                                 selectedGroupIndices
                             ) { newColorStr ->
                                 groupColors = groupColors.toMutableMap().apply {
-                                    selectedGroupIndices.forEach { groupIndex ->
-                                        this[groupIndex] = newColorStr
-                                    }
+                                    selectedGroupIndices.forEach { groupIndex -> this[groupIndex] = newColorStr }
                                 }
                                 rgbColorStr = newColorStr
                             }
 
                             Spacer(modifier = Modifier.height(32.dp))
 
-                            Button(onClick = { showMenu = false },
-                                colors = ButtonDefaults.buttonColors(
-                                    containerColor = Color(11, 77, 199)
-                                ),
+                            Button(
+                                onClick = { showMenu = false },
+                                colors = ButtonDefaults.buttonColors(containerColor = Color(11, 77, 199))
                             ) {
                                 Text("IŠSAUGOTI")
                             }
@@ -356,6 +301,3 @@ fun ControlScreen(navController: NavController, access_code: String, sharedPrefe
         }
     }
 }
-
-
-

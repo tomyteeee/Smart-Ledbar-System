@@ -26,6 +26,8 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.navigation.NavController
 import kotlinx.coroutines.CoroutineScope
+import kotlinx.serialization.encodeToString
+import kotlinx.serialization.json.Json
 import me.frostingly.app.Screen
 import me.frostingly.app.SharedPreferences
 import me.frostingly.app.bluetooth.BluetoothManagerSingleton
@@ -186,7 +188,7 @@ fun LedbarScreen(
                                                     onConnected = {
                                                         connectionStatus = ConnectionStatus.CONNECTED
                                                         sendBluetoothCommand(context, "CONNECTED\n") {}
-
+                                                        val jsonString = Json.encodeToString(ledbar.configuration)
                                                         navController.navigate(
                                                             Screen.ControlScreen.withArgs(
                                                                 sharedPreferences.readString("access_code")
@@ -194,7 +196,7 @@ fun LedbarScreen(
                                                                 ledbar.id,
                                                                 ledbar.mac_address,
                                                                 ledbar.name,
-                                                                ledbar.configuration,
+                                                                jsonString,
                                                                 connectionStatus.toString()
                                                             )
                                                         )

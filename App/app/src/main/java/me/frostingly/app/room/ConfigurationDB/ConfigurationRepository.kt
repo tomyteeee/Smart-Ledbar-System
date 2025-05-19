@@ -2,15 +2,41 @@ package me.frostingly.app.room.ConfigurationDB
 
 import android.content.Context
 import androidx.room.Room
+import androidx.room.migration.Migration
+import androidx.sqlite.db.SupportSQLiteDatabase
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 
 class ConfigurationRepository(context: Context) {
 
+    val MIGRATION_1_2 = object : Migration(1, 2) {
+        override fun migrate(database: SupportSQLiteDatabase) {
+            database.execSQL(
+                """
+            CREATE TABLE IF NOT EXISTS configurations_new (
+                id TEXT NOT NULL PRIMARY KEY,
+                moments TEXT NOT NULL DEFAULT '[]'
+            )
+            """.trimIndent()
+            )
+
+            // Copy over IDs, defaulting moments to empty array
+            database.execSQL(
+                """
+            INSERT INTO configurations_new (id, moments)
+            SELECT id, '[]' FROM configurations
+            """.trimIndent()
+            )
+
+            database.execSQL("DROP TABLE configurations")
+            database.execSQL("ALTER TABLE configurations_new RENAME TO configurations")
+        }
+    }
+
     private val db = Room.databaseBuilder(
         context.applicationContext,
         AppDatabase::class.java, "configurations-db"
-    )
+    ).addMigrations(MIGRATION_1_2)
         .build()
 
     private val configurationDao = db.configurationDao()

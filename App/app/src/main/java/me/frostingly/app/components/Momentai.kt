@@ -41,10 +41,13 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.core.text.isDigitsOnly
+import me.frostingly.app.room.ConfigurationDB.Configuration
 
 @RequiresApi(Build.VERSION_CODES.VANILLA_ICE_CREAM)
 @Composable
-fun Momentai() {
+fun Momentai(configuration: Configuration) {
+
+    val currentConfig = remember { mutableStateOf(configuration) }
 
     data class Moment(val configuration: String)
 

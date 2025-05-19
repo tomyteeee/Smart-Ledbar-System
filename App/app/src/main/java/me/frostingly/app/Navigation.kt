@@ -10,7 +10,13 @@ import androidx.navigation.compose.composable
 import androidx.navigation.compose.rememberNavController
 import androidx.navigation.navArgument
 import kotlinx.coroutines.CoroutineScope
+import kotlinx.serialization.json.Json
+import kotlinx.serialization.encodeToString
 import me.frostingly.app.bluetooth.ConnectionStatus
+import me.frostingly.app.components.data.ColorConfig
+import me.frostingly.app.components.data.Effect
+import me.frostingly.app.components.data.Moment
+import me.frostingly.app.room.ConfigurationDB.Configuration
 import me.frostingly.app.room.ConfigurationDB.ConfigurationRepository
 import me.frostingly.app.room.LedbarDB.LedbarRepository
 import me.frostingly.app.screens.AccessScreen
@@ -39,6 +45,30 @@ fun Navigation(sharedPreferences: SharedPreferences, context: Context, ledbarRep
                     lifecycleScope
                 )
             } else {
+                //2(3000,1):colors=0-7:255,0,0;)
+                val config2 = Configuration("2", moments = listOf(Moment(
+                    1, 1000, 3, listOf(
+                        ColorConfig(0, "255,255,0"),
+                        ColorConfig(1, "255,255,0"),
+                        ColorConfig(2, "255,255,0"),
+                        ColorConfig(3, "0,255,255"),
+                        ColorConfig(4, "0,255,255"),
+                        ColorConfig(5, "0,255,255"),
+                        ColorConfig(6, "0,255,255"),
+                        ColorConfig(7, "0,255,255"),
+                    ), listOf(
+                        Effect.Blink(listOf(0, 1, 2, 3, 4, 5, 6, 7), 500, 3)
+                    )
+                )))
+//                AccessScreen(
+//                    navController = navController,
+//                    sharedPreferences,
+//                    context,
+//                    ledbarRepository,
+//                    configurationRepository,
+//                    lifecycleScope
+//                )
+                val jsonString = Json.encodeToString(config2)
                 ControlScreen(
                     navController,
                     "WW2025",
@@ -50,7 +80,7 @@ fun Navigation(sharedPreferences: SharedPreferences, context: Context, ledbarRep
                     "šviestuvas2",
                     "00:00:13:00:0B:D3",
                     "Antras šviestuvas",
-                    """moments(1(1000,3):colors=0-2:255,255,0;3-7:0, 255, 255;effects=0-7:Blink(500,3);2(3000,1):colors=0-7:255,0,0;)""",
+                    jsonString,
                     ConnectionStatus.valueOf("CONNECTED")
                 )
 //                LedbarScreen(
