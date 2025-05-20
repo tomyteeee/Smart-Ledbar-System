@@ -54,15 +54,15 @@ fun RGBColorPicker(
         val r = (rgbColor.red * 255).roundToInt()
         val g = (rgbColor.green * 255).roundToInt()
         val b = (rgbColor.blue * 255).roundToInt()
-        val rgbString = "$r $g $b"
+        val rgbString = "$r,$g,$b"
         onColorChange(rgbString) // Update the parent component
 
-        if (currentSelectedGroupIndices.value.isNotEmpty()) {
-            sendBluetoothCommand(
-                context,
-                "gc([${reorganizeIndices(currentSelectedGroupIndices.value)}], \"$rgbString\")\n"
-            ) { }
-        }
+//        if (currentSelectedGroupIndices.value.isNotEmpty()) {
+//            sendBluetoothCommand(
+//                context,
+//                "gc([${reorganizeIndices(currentSelectedGroupIndices.value)}], \"$rgbString\")\n"
+//            ) { }
+//        }
     }
 
     Row(

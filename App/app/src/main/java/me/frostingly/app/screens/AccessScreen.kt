@@ -135,7 +135,7 @@ fun AccessScreen(navController: NavController, sharedPreferences: SharedPreferen
                                 ColorConfig(6, "0,255,255"),
                                 ColorConfig(7, "0,255,255"),
                             ), listOf(
-                                Effect.Blink(listOf(0, 1, 2, 3, 4, 5, 6, 7), 500, 3)
+
                             )
                         )))
                         val config3 = Configuration("3", moments = listOf(Moment(

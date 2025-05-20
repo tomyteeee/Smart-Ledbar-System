@@ -94,11 +94,7 @@ fun LedbarPreview(
         OutlinedButton(
             onClick = {
                 onToggleMoments()
-                if (!displayMoments) {
-                    Log.d("PROJEKTAS", "reverting colors")
-
-
-                }
+                fadeAlpha = 1f
             },
             border = BorderStroke(2.dp, Color(7, 53, 139)),
             colors = ButtonDefaults.buttonColors(containerColor = Color(11, 77, 199)),
@@ -125,8 +121,9 @@ fun LedbarPreview(
             (0 until 8).forEach { index ->
                 val baseColor = colorFromRgbString(colorsToUse[index] ?: "255,255,255")
                 val visible = visibilityMap[index] ?: true
+                val shouldDim = displayEffects && !visible
                 LedGroup(
-                    color = if (!displayEffects || visible) baseColor else baseColor.copy(alpha = 0.2f),
+                    color = if (shouldDim) baseColor.copy(alpha = 0.2f) else baseColor,
                     groupIndex = index,
                     isSelected = selectedGroupIndices.contains(index),
                     onClick = { groupIndex ->

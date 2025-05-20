@@ -57,7 +57,7 @@ fun Navigation(sharedPreferences: SharedPreferences, context: Context, ledbarRep
                         ColorConfig(6, "0,255,255"),
                         ColorConfig(7, "0,255,255"),
                     ), listOf(
-                        Effect.Blink(listOf(0, 1, 2, 3, 4, 5, 6, 7), 500, 3)
+
                     )
                 )))
 //                AccessScreen(
@@ -68,30 +68,30 @@ fun Navigation(sharedPreferences: SharedPreferences, context: Context, ledbarRep
 //                    configurationRepository,
 //                    lifecycleScope
 //                )
-                val jsonString = Json.encodeToString(config2)
-                ControlScreen(
-                    navController,
-                    "WW2025",
-                    sharedPreferences,
-                    context,
-                    ledbarRepository,
-                    configurationRepository,
-                    lifecycleScope,
-                    "šviestuvas2",
-                    "00:00:13:00:0B:D3",
-                    "Antras šviestuvas",
-                    jsonString,
-                    ConnectionStatus.valueOf("CONNECTED")
-                )
-//                LedbarScreen(
+//                val jsonString = Json.encodeToString(config2)
+//                ControlScreen(
 //                    navController,
-//                    sharedPreferences.readString("access_code"),
+//                    "WW2025",
 //                    sharedPreferences,
 //                    context,
 //                    ledbarRepository,
 //                    configurationRepository,
-//                    lifecycleScope
+//                    lifecycleScope,
+//                    "šviestuvas2",
+//                    "00:00:13:00:0B:D3",
+//                    "Antras šviestuvas",
+//                    jsonString,
+//                    ConnectionStatus.valueOf("CONNECTED")
 //                )
+                LedbarScreen(
+                    navController,
+                    sharedPreferences.readString("access_code"),
+                    sharedPreferences,
+                    context,
+                    ledbarRepository,
+                    configurationRepository,
+                    lifecycleScope
+                )
             }
         }
         composable(

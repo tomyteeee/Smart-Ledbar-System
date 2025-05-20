@@ -9,5 +9,7 @@ sealed class Effect() {
     @Serializable
     data class Wave(val affectedGroups: List<Int> = emptyList(), val delay: Int, val speed: Int, val times: Int) : Effect()
     @Serializable
+    data class Move(val affectedGroups: List<Int> = emptyList(), val speed: Int, val times: Int) : Effect()
+    @Serializable
     object NONE: Effect()
 }

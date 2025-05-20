@@ -12,6 +12,7 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.*
+import androidx.compose.material3.ButtonDefaults
 import androidx.compose.runtime.*
 import androidx.compose.runtime.snapshots.SnapshotStateMap
 import androidx.compose.ui.Alignment
@@ -24,6 +25,7 @@ import androidx.compose.ui.unit.sp
 import androidx.compose.ui.window.Popup
 import androidx.navigation.NavController
 import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import me.frostingly.app.R
 import me.frostingly.app.Screen
@@ -43,6 +45,8 @@ import me.frostingly.app.room.ConfigurationDB.ConfigurationRepository
 import me.frostingly.app.room.LedbarDB.LedbarRepository
 import kotlinx.coroutines.launch
 import kotlinx.serialization.json.Json
+import me.frostingly.app.components.data.Moment
+import me.frostingly.app.components.reorganizeIndices
 import sendBluetoothCommand
 
 @RequiresApi(Build.VERSION_CODES.VANILLA_ICE_CREAM)
@@ -83,72 +87,157 @@ fun ControlScreen(
         mutableStateOf(Json.decodeFromString<Configuration>(configuration))
     }
 
-    // Extract moments from the Configuration object
-    val moments = configurationState.value.moments
+    val currentMove: Effect.Move? =
+        configurationState.value
+            .moments
+            .getOrNull(selectedMomentIndex)
+            ?.effects
+            ?.filterIsInstance<Effect.Move>()
+            ?.firstOrNull()
 
-    // Flatten all color configs to get initial colors per group index
-    val initialGroupColors = moments
-        .flatMap { it.colorConfig }
-        .distinctBy { it.index }
-        .associate { it.index to it.rgb }
-        .toMutableMap()
-
-    // Flatten effects, indexed by LED group index (customize if needed)
-    val initialGroupEffects = mutableMapOf<Int, Effect>()
-
-    moments.flatMap { it.effects }.forEach { effect ->
-        when (effect) {
-            is Effect.Blink -> effect.affectedGroups.forEach { groupIndex ->
-                initialGroupEffects[groupIndex] = effect
-            }
-            is Effect.Wave -> effect.affectedGroups.forEach { groupIndex ->
-                initialGroupEffects[groupIndex] = effect
-            }
-            Effect.NONE -> {}
+    val moveEnabled by remember(currentMove, selectedGroupIndices) {
+        derivedStateOf {
+            currentMove?.affectedGroups
+                ?.any { it in selectedGroupIndices }
+                ?: false
         }
     }
+    var moveSpeed by remember(selectedMomentIndex) {
+        mutableStateOf(currentMove?.speed?.toString() ?: "")
+    }
+    var moveTimes by remember(selectedMomentIndex) {
+        mutableStateOf(currentMove?.times?.toString() ?: "")
+    }
+
+    val currentBlink: Effect.Blink? =
+        configurationState.value
+            .moments
+            .getOrNull(selectedMomentIndex)
+            ?.effects
+            ?.filterIsInstance<Effect.Blink>()
+            ?.firstOrNull()
+
+    val blinkEnabled by remember(currentBlink, selectedGroupIndices) {
+        derivedStateOf {
+            currentBlink?.affectedGroups
+                ?.any { it in selectedGroupIndices }
+                ?: false
+        }
+    }
+    var blinkDelay by remember(selectedMomentIndex) {
+        mutableStateOf(currentBlink?.delay?.toString() ?: "")
+    }
+    var blinkTimes by remember(selectedMomentIndex) {
+        mutableStateOf(currentBlink?.times?.toString() ?: "")
+    }
+
+    // Extract moments from the Configuration object
+    val moments = configurationState.value.moments
 
     var groupColors by remember { mutableStateOf<Map<Int,String>>(emptyMap()) }
     var groupEffects by remember { mutableStateOf<Map<Int,Effect>>(emptyMap()) }
 
-    LaunchedEffect(moments, displayMoments) {
-        if (moments.isEmpty() || !displayMoments) return@LaunchedEffect
+    val moment = configurationState.value.moments[selectedMomentIndex]
+
+    val activeKinds = moment.effects
+        .filter { effect ->
+            when (effect) {
+                is Effect.Blink    -> selectedGroupIndices.any { it in effect.affectedGroups }
+                is Effect.Move     -> selectedGroupIndices.any { it in effect.affectedGroups }
+                is Effect.Wave     -> selectedGroupIndices.any { it in effect.affectedGroups }
+                else               -> false
+            }
+        }
+        .mapNotNull {
+            when (it) {
+                is Effect.Blink -> "blink"
+                is Effect.Move  -> "move"
+                is Effect.Wave  -> "wave"
+                else            -> null
+            }
+        }
+        .toSet()
+
+    val allowToggles = activeKinds.size == 1
+
+
+    LaunchedEffect(moments, displayMoments, displayEffects, selectedMomentIndex) {
+        if (moments.isEmpty()) return@LaunchedEffect
+
+        var blinkJob: Job? = null
 
         while (true) {
-            for (moment in moments) {
-                repeat(moment.repeat) {
-                    groupColors = moment.colorConfig.associate { it.index to it.rgb }
+            when {
+                displayMoments && displayEffects -> {
+                    for (moment in moments) {
+                        repeat(moment.repeat) {
+                            blinkJob?.cancel() // cancel previous blink job if still running
 
-                    val blinkEffects = moment.effects.filterIsInstance<Effect.Blink>()
+                            groupColors = moment.colorConfig.associate { it.index to it.rgb }
+
+                            val blinkList = moment.effects.filterIsInstance<Effect.Blink>()
+                            val blinkCount = blinkList.maxOfOrNull { it.times } ?: 0
+                            val blinkDelay = blinkList.firstOrNull()?.delay?.toLong() ?: 0L
+
+                            (0 until 8).forEach { visibilityMap[it] = true }
+
+                            blinkJob = launch {
+                                repeat(blinkCount) {
+                                    blinkList.forEach { e -> e.affectedGroups.forEach { idx -> visibilityMap[idx] = false } }
+                                    delay(blinkDelay)
+                                    blinkList.forEach { e -> e.affectedGroups.forEach { idx -> visibilityMap[idx] = true } }
+                                    delay(blinkDelay)
+                                }
+                            }
+
+                            delay(moment.delayMs.toLong())
+                        }
+                    }
+                }
+
+                !displayMoments && displayEffects -> {
+                    val m = moments.getOrNull(selectedMomentIndex) ?: break
+                    blinkJob?.cancel()
+
+                    groupColors = m.colorConfig.associate { it.index to it.rgb }
+
+                    val blinkList = m.effects.filterIsInstance<Effect.Blink>()
+                    val blinkCount = blinkList.maxOfOrNull { it.times } ?: 0
+                    val blinkDelay = blinkList.firstOrNull()?.delay?.toLong() ?: 0L
 
                     (0 until 8).forEach { visibilityMap[it] = true }
 
-                    val blinkCount = blinkEffects.maxOfOrNull { it.times } ?: 0
-                    val blinkDelay = blinkEffects.firstOrNull()?.delay?.toLong() ?: 0L
-
-                    if (blinkEffects.isNotEmpty()) {
-                        for (i in 1..blinkCount) {
-                            blinkEffects.forEach { effect ->
-                                effect.affectedGroups.forEach { idx -> visibilityMap[idx] = false }
-                            }
+                    blinkJob = launch {
+                        repeat(blinkCount) {
+                            blinkList.forEach { e -> e.affectedGroups.forEach { idx -> visibilityMap[idx] = false } }
                             delay(blinkDelay)
-                            blinkEffects.forEach { effect ->
-                                effect.affectedGroups.forEach { idx -> visibilityMap[idx] = true }
-                            }
+                            blinkList.forEach { e -> e.affectedGroups.forEach { idx -> visibilityMap[idx] = true } }
                             delay(blinkDelay)
                         }
                     }
 
-                    val totalBlinkTime = blinkCount * blinkDelay * 2
-                    val remainingDelay = moment.delayMs - totalBlinkTime
-                    if (remainingDelay > 0) delay(remainingDelay)
+                    delay(m.delayMs.toLong())
+                }
+
+                !displayMoments && !displayEffects -> {
+                    val m = moments.getOrNull(selectedMomentIndex) ?: break
+                    blinkJob?.cancel()
+                    groupColors = m.colorConfig.associate { it.index to it.rgb }
+                    delay(m.delayMs.toLong())
+                }
+
+                displayMoments && !displayEffects -> {
+                    for (moment in moments) {
+                        repeat(moment.repeat) {
+                            blinkJob?.cancel()
+                            groupColors = moment.colorConfig.associate { it.index to it.rgb }
+                            delay(moment.delayMs.toLong())
+                        }
+                    }
                 }
             }
         }
     }
-
-
-
 
 
     if (!bluetoothManager.isBluetoothEnabled()) {
@@ -252,9 +341,135 @@ fun ControlScreen(
                 }
             }
 
-            BlinkEffect()
+            BlinkEffect(
+                enabled      = allowToggles && "blink" in activeKinds,
+                delayMs      = blinkDelay,
+                times        = blinkTimes,
+                onEnabledChange = { checked ->
+                    val m = configurationState.value.moments[selectedMomentIndex]
+                    val oldBlinks = m.effects.filterIsInstance<Effect.Blink>()
+                    val newBlink = if (checked) {
+                        // union of existing and newly selected groups
+                        Effect.Blink(
+                            affectedGroups = (oldBlinks.flatMap { it.affectedGroups } + selectedGroupIndices)
+                                .distinct(),
+                            delay = blinkDelay.toIntOrNull() ?: 0,
+                            times = blinkTimes.toIntOrNull() ?: 0
+                        )
+                    } else {
+                        null
+                    }
 
-            MoveEffect()
+                    configurationState.value = configurationState.value.copy(
+                        moments = configurationState.value.moments.mapIndexed { idx, mm ->
+                            if (idx == selectedMomentIndex) {
+                                val others = mm.effects.filterNot { it is Effect.Blink }
+                                if (newBlink != null) mm.copy(effects = others + newBlink)
+                                else mm.copy(effects = others)
+                            } else mm
+                        }
+                    )
+                },
+                onDelayChange = { newDelay ->
+                    blinkDelay = newDelay
+                },
+                onTimesChange = { newTimes ->
+                    blinkTimes = newTimes
+                },
+                onSave = {
+                    val delayInt = blinkDelay.toIntOrNull()
+                    if (delayInt == null) {
+                        Log.d("PROJEKTAS", "Invalid delay: $blinkDelay")
+                        return@BlinkEffect
+                    }
+                    val timesInt = blinkTimes.toIntOrNull()
+                    if (timesInt == null) {
+                        Log.d("PROJEKTAS", "Invalid times: $blinkTimes")
+                        return@BlinkEffect
+                    }
+
+                    configurationState.value = configurationState.value.copy(
+                        moments = configurationState.value.moments.mapIndexed { idx, m ->
+                            if (idx == selectedMomentIndex) {
+                                val others = m.effects.filterNot { it is Effect.Blink }
+                                m.copy(effects = others + Effect.Blink(
+                                    affectedGroups = selectedGroupIndices.toList(),
+                                    delay = delayInt,
+                                    times = timesInt
+                                ))
+                            } else m
+                        }
+                    )
+                }
+            )
+
+            MoveEffect(
+                enabled      = allowToggles && "move" in activeKinds,
+                speedMs      = moveSpeed,
+                times        = moveTimes,
+                onEnabledChange = { checked ->
+                    val m = configurationState.value.moments[selectedMomentIndex]
+                    val oldMoves = m.effects.filterIsInstance<Effect.Move>()
+                    val newMove = if (checked) {
+                        // union of existing and newly selected groups
+                        Effect.Move(
+                            affectedGroups = (oldMoves.flatMap { it.affectedGroups } + selectedGroupIndices)
+                                .distinct(),
+                            speed = moveSpeed.toIntOrNull() ?: 0,
+                            times = moveTimes.toIntOrNull() ?: 0
+                        )
+                    } else {
+                        null
+                    }
+
+                    configurationState.value = configurationState.value.copy(
+                        moments = configurationState.value.moments.mapIndexed { idx, mm ->
+                            if (idx == selectedMomentIndex) {
+                                val others = mm.effects.filterNot { it is Effect.Move }
+                                if (newMove != null) mm.copy(effects = others + newMove)
+                                else mm.copy(effects = others)
+                            } else mm
+                        }
+                    )
+                },
+                onSpeedChange = { newSpeed ->
+                    moveSpeed = newSpeed
+                    Log.d("PROJEKTAS", moveSpeed)
+                },
+                onTimesChange = { newTimes ->
+                    moveTimes = newTimes
+                    Log.d("PROJEKTAS", moveTimes)
+                },
+                onSave = {
+                    val speedInt = moveSpeed.toIntOrNull()
+                    if (speedInt == null) {
+                        Log.d("PROJEKTAS", "Invalid speed: $moveSpeed")
+                        return@MoveEffect
+                    }
+                    val timesInt = moveTimes.toIntOrNull()
+                    if (timesInt == null) {
+                        Log.d("PROJEKTAS", "Invalid times: $moveTimes")
+                        return@MoveEffect
+                    }
+
+                    Log.d("PROJEKTAS", "Saving Move: speed=$speedInt times=$timesInt")
+
+                    configurationState.value = configurationState.value.copy(
+                        moments = configurationState.value.moments.mapIndexed { idx, m ->
+                            if (idx == selectedMomentIndex) {
+                                val others = m.effects.filterNot { it is Effect.Move }
+                                m.copy(effects = others + Effect.Move(
+                                    affectedGroups = selectedGroupIndices.toList(),
+                                    speed = speedInt,
+                                    times = timesInt
+                                )).also { updatedMoment ->
+                                    Log.d("PROJEKTAS", "Updated moment $idx effects: ${updatedMoment.effects}")
+                                }
+                            } else m
+                        }
+                    )
+                }
+            )
 
             WaveEffect()
 
@@ -268,14 +483,56 @@ fun ControlScreen(
                 Button(
                     onClick = {
                         lifecycleScope.launch {
-                            // Example save logic (you'll want to convert groupColors and groupEffects to Moments etc)
-                            // configurationRepository.update(/* ... */)
+                            configurationState.value.moments.forEach { moment ->
+                                val mi = moment.id - 1
+
+                                // 1) Activate moment
+                                sendBluetoothCommand(context, "am($mi)\n") {}
+                                delay(200L)
+
+                                // 2) Set moment timing
+                                sendBluetoothCommand(
+                                    context,
+                                    "smi($mi,${moment.delayMs},${moment.repeat})\n"
+                                ) {}
+                                delay(200L)
+
+                                // 3) Send all gc(...) for colorConfigs
+                                moment.colorConfig.forEach { cc ->
+                                    val gs = reorganizeIndices(setOf(cc.index))
+                                    sendBluetoothCommand(
+                                        context,
+                                        "gc($mi,[$gs], \"${cc.rgb}\")\n"
+                                    ) {}
+                                    delay(200L)
+                                }
+
+                                // 4) Combine and send MOVE effect(s)
+// 4) Send MOVE effect
+                                val move = moment.effects.filterIsInstance<Effect.Move>().firstOrNull()
+                                if (move != null) {
+                                    // move.affectedGroups already contains the full group set
+                                    val grpStr = reorganizeIndices(move.affectedGroups.toSet())
+
+                                    val times = move.times
+                                    val speed = move.speed
+
+                                    // Note: Arduino expects MoveEffect(times, timeDelay, …)
+                                    val cmd = "ge($mi,[$grpStr], \"M\"($times,$speed))\n"
+                                    Log.d("PROJEKTAS", "Sending MOVE command: $cmd")
+                                    sendBluetoothCommand(context, cmd) {}
+                                    delay(200L)
+                                }
+                            }
                         }
                     },
-                    colors = ButtonDefaults.buttonColors(containerColor = Color(11, 77, 199)),
+                    colors = ButtonDefaults.buttonColors(containerColor = Color(11, 77, 199))
                 ) {
                     Text("IŠSAUGOTI")
                 }
+
+
+
             }
 
             Spacer(modifier = Modifier.size(300.dp))
@@ -329,11 +586,28 @@ fun ControlScreen(
                                 rgbColorStr,
                                 selectedGroupIndices
                             ) { newColorStr ->
+                                configurationState.value = configurationState.value.copy(
+                                    moments = configurationState.value.moments.mapIndexed { idx, moment ->
+                                        if (idx == selectedMomentIndex) {
+                                            val updatedColorConfigs = moment.colorConfig.map { cc ->
+                                                if (cc.index in selectedGroupIndices) {
+                                                    cc.copy(rgb = newColorStr)
+                                                } else cc
+                                            }
+                                            moment.copy(colorConfig = updatedColorConfigs)
+                                        } else moment
+                                    }
+                                )
+
                                 groupColors = groupColors.toMutableMap().apply {
-                                    selectedGroupIndices.forEach { groupIndex -> this[groupIndex] = newColorStr }
+                                    selectedGroupIndices.forEach { groupIndex ->
+                                        this[groupIndex] = newColorStr
+                                    }
                                 }
+
                                 rgbColorStr = newColorStr
                             }
+
 
                             Spacer(modifier = Modifier.height(32.dp))
 
